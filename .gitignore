@@ -4,7 +4,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-faiss_index/
+# faiss_index/
 
 # C extensions
 *.so

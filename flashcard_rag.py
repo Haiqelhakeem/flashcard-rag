@@ -1,9 +1,6 @@
 import os
 from dotenv import load_dotenv
-
-# Load environment variables from .env file
 load_dotenv()
-
 import json
 from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 from langchain_google_genai import ChatGoogleGenerativeAI

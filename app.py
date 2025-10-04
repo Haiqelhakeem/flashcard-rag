@@ -31,7 +31,6 @@ if st.button("Generate Flashcards!", type="primary"):
     if user_topic:
         with st.spinner("Menganalisis dokumen dan membuat flashcard..."):
             start_time = time.time()
-            # The backend function now returns a dictionary with sources
             result = generate_flashcard_data(user_topic)
 
             end_time = time.time()
@@ -45,7 +44,7 @@ if st.button("Generate Flashcards!", type="primary"):
             st.success(f"Berhasil membuat {len(flashcards_data)} flashcards mengenai topik '{user_topic}'. Silahkan lihat di bawah!")
             st.write(f"Durasi: {duration:.2f} detik")
 
-            # Display Flashcards (No changes to this part)
+            # Display Flashcards
             cols = st.columns(3)
             for i, card in enumerate(flashcards_data):
                 col = cols[i % 3]
@@ -67,14 +66,14 @@ if st.button("Generate Flashcards!", type="primary"):
                 with col:
                     st.components.v1.html(component_html, height=220)
 
-            # --- NEW: Display the sources ---
+            # --- Display the sources ---
             st.markdown("---")
             st.subheader("Sumber yang digunakan untuk membuat flashcard tersebut:")
             
             if source_documents:
                 for doc in source_documents:
                     source_file = os.path.basename(doc.metadata.get("source", "Unknown File"))
-                    page_number = doc.metadata.get("page", -1) + 1 # Add 1 for display
+                    page_number = doc.metadata.get("page", -1) + 1 
                     
                     with st.expander(f"**Source:** {source_file}, **Page:** {page_number}"):
                         st.write(doc.page_content)
