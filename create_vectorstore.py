@@ -55,7 +55,7 @@ def main():
     print("Initializing local embedding model (this may download the model on first run)...")
     # This model runs on your computer, no API key or internet needed after download
     embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2",
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         model_kwargs={'device': 'cpu'}
     )
 

@@ -23,7 +23,7 @@ def get_vector_db_retriever():
     # This model ('all-MiniLM-L6-v2') is small, fast, and effective.
     # It will be downloaded automatically the first time you run it.
     embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2",
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         model_kwargs={'device': 'cpu'} # Use CPU for broad compatibility
     )
     
@@ -33,4 +33,7 @@ def get_vector_db_retriever():
         allow_dangerous_deserialization=True
     )
 
-    return db.as_retriever(search_kwargs={'score_threshold': 0.7})
+    return db.as_retriever(
+        search_type="mmr",
+        search_kwargs={'score_threshold': 0.6}
+        )

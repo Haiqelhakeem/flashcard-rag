@@ -1,18 +1,17 @@
 import os
-from dotenv import load_dotenv
-load_dotenv()
 import json
-from langchain_core.runnables import RunnablePassthrough, RunnableParallel
+from dotenv import load_dotenv
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langsmith import traceable
 from utils import get_vector_db_retriever
 
-# --- Configuration ---
+load_dotenv()
+
 MODEL_NAME = "gemini-2.0-flash"
 
-# --- Initialize Gemini Model ---
 try:
     llm = ChatGoogleGenerativeAI(
         model=MODEL_NAME,
@@ -24,7 +23,6 @@ except Exception as e:
     print(f"Error initializing the model: {e}")
     exit()
 
-# --- Combined Few-Shot prompt with the {topic} placeholder ---
 FLASHCARD_PROMPT = """
 Tugas Anda adalah menjadi seorang guru ahli yang membuat materi pembelajaran yang mudah dihafal. Berdasarkan konteks yang diberikan, buatlah satu set flashcard dalam **Bahasa Indonesia** yang berfokus pada topik utama: **{topic}**.
 
@@ -61,39 +59,44 @@ Asam deoksiribonukleat, atau DNA, adalah molekul yang membawa instruksi genetik.
 ### Konteks:
 {context}
 
+Jika konteks di atas kosong atau tidak relevan, jangan menebak atau menggunakan pengetahuan umum. 
+Kembalikan output berikut:
+[]
+
 ### Output JSON:
 """
 
-# Helper function to format documents
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 @traceable(run_type="chain", name="RAG_Flashcard_Chain_With_Topic")
 def generate_flashcard_data(topic: str):
-    """
-    Creates a RAG chain that uses both the topic and context to generate flashcards,
-    and returns the flashcards along with the source documents.
-    """
     retriever = get_vector_db_retriever()
     parser = JsonOutputParser()
     prompt = ChatPromptTemplate.from_template(template=FLASHCARD_PROMPT)
-
-    # This part of the chain will generate the final flashcards
     generation_chain = prompt | llm | parser
 
-    # This setup explicitly prepares the context and topic in parallel.
-    # It also passes the original context through so we can display sources.
-    chain = RunnableParallel(
-        flashcards=RunnableParallel(
-            context=retriever | format_docs,
-            topic=RunnablePassthrough()
-        ) | generation_chain,
-        context=retriever,
+    def safe_generate(inputs):
+        context_docs = inputs["context"]
+        formatted_context = format_docs(context_docs)
+        if not formatted_context.strip():
+            return []  # ⛔️ Prevent hallucination
+        return generation_chain.invoke({
+            "context": formatted_context,
+            "topic": inputs["topic"]
+        })
+
+    chain = (
+        RunnablePassthrough.assign(
+            context=lambda inputs: retriever.invoke(inputs["topic"])
+        )
+        .assign(
+            flashcards=RunnableLambda(safe_generate)
+        )
     )
 
     try:
-        # We invoke the chain directly with the topic string
-        result = chain.invoke(topic)
+        result = chain.invoke({"topic": topic})
         return result
     except Exception as e:
         print(f"An error occurred in the chain: {e}")
