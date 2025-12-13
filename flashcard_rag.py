@@ -15,7 +15,8 @@ MODEL_NAME = "gemini-2.0-flash"
 try:
     llm = ChatGoogleGenerativeAI(
         model=MODEL_NAME,
-        google_api_key=os.environ.get("GEMINI_API_KEY")
+        google_api_key=os.environ.get("GEMINI_API_KEY"),
+        temperature=0.4
     )
     if not os.environ.get("GEMINI_API_KEY"):
         raise ValueError("GEMINI_API_KEY environment variable not found.")
@@ -29,6 +30,7 @@ Tugas Anda adalah menjadi seorang guru ahli yang membuat materi pembelajaran yan
 Setiap flashcard harus mengikuti prinsip-prinsip berikut agar mudah dihafal:
 1.  **Satu Konsep Utama**: Setiap flashcard harus fokus pada satu ide atau istilah kunci saja.
 2.  **Bahasa Sederhana**: Gunakan bahasa yang sederhana dan mudah dimengerti, bukan jargon akademis yang rumit.
+3.  **Komprehensif & Kuantitas**: Jangan hanya merangkum inti sari. Gali detail-detail penting. **Buatlah setidaknya 5 hingga 10 flashcard** jika konteks memungkinkan. Semakin banyak detail relevan yang Anda ekstrak, semakin baik.
 ---
 ## Contoh 1
 ### Topik: Fotosintesis

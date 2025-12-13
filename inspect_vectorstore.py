@@ -8,7 +8,7 @@ load_dotenv()
 
 # Definisikan path
 VECTORSTORE_PATH = "./faiss_index"
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 def inspect_vector_store(search_term: str):
     """

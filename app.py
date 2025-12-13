@@ -12,7 +12,7 @@ from flashcard_rag import generate_flashcard_data
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="RAG Flashcards Generator", layout="wide")
 st.title("Biology Flashcards Generator - RAG")
-st.write("Masukkan topik Biologi dan AI akan membuatkan flashcards dari topik yang dimasukkan berdasarkan dokumen yang relevan")
+st.write("Masukkan keyword Biologi dan AI akan membuatkan flashcards dari keyword yang dimasukkan berdasarkan dokumen yang relevan")
 
 card_colors = [
     "#74c0fc",  # Bright Blue
@@ -25,9 +25,9 @@ card_colors = [
 ]
 
 # --- User Input ---
-user_topic = st.text_input("Masukkan Topik:", placeholder="contoh: DNA")
+user_topic = st.text_input("Masukkan Keyword:", placeholder="contoh: DNA")
 
-if st.button("Generate Flashcards!", type="primary"):
+if st.button("Buat Flashcards", type="primary"):
     if user_topic:
         with st.spinner("Menganalisis dokumen dan membuat flashcard..."):
             start_time = time.time()

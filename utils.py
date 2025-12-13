@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
-# CHANGE 1: Import the new embedding class
 from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
@@ -19,12 +18,9 @@ def get_vector_db_retriever():
             "Please run the `create_vectorstore.py` script first."
         )
 
-    # CHANGE 2: Use the free, local Hugging Face model instead of Google's
-    # This model ('all-MiniLM-L6-v2') is small, fast, and effective.
-    # It will be downloaded automatically the first time you run it.
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        model_kwargs={'device': 'cpu'} # Use CPU for broad compatibility
+        model_kwargs={'device': 'cpu'} 
     )
     
     db = FAISS.load_local(
@@ -35,5 +31,5 @@ def get_vector_db_retriever():
 
     return db.as_retriever(
         search_type="mmr",
-        search_kwargs={'score_threshold': 0.6}
+        search_kwargs={'score_threshold': 0.6, 'k': 8}
         )
