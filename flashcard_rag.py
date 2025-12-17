@@ -1,7 +1,6 @@
 import os
-import json
+import time
 from dotenv import load_dotenv
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -10,7 +9,8 @@ from utils import get_vector_db_retriever
 
 load_dotenv()
 
-MODEL_NAME = "gemini-2.0-flash"
+# FIX 1: Use 1.5-flash for stability and free tier limits
+MODEL_NAME = "gemini-2.5-flash"
 
 try:
     llm = ChatGoogleGenerativeAI(
@@ -24,45 +24,35 @@ except Exception as e:
     print(f"Error initializing the model: {e}")
     exit()
 
+# FIX 2: Strict Prompt with Double Braces {{ }} for JSON examples
 FLASHCARD_PROMPT = """
-Tugas Anda adalah menjadi seorang guru ahli yang membuat materi pembelajaran yang mudah dihafal. Berdasarkan konteks yang diberikan, buatlah satu set flashcard dalam **Bahasa Indonesia** yang berfokus pada topik utama: **{topic}**.
+Anda adalah asisten dosen biologi ahli. Tugas Anda adalah mengekstrak istilah penting dan definisinya dari konteks yang diberikan menjadi format JSON.
 
-Setiap flashcard harus mengikuti prinsip-prinsip berikut agar mudah dihafal:
-1.  **Satu Konsep Utama**: Setiap flashcard harus fokus pada satu ide atau istilah kunci saja.
-2.  **Bahasa Sederhana**: Gunakan bahasa yang sederhana dan mudah dimengerti, bukan jargon akademis yang rumit.
-3.  **Komprehensif & Kuantitas**: Jangan hanya merangkum inti sari. Gali detail-detail penting. **Buatlah setidaknya 5 hingga 10 flashcard** jika konteks memungkinkan. Semakin banyak detail relevan yang Anda ekstrak, semakin baik.
----
-## Contoh 1
-### Topik: Fotosintesis
-### Konteks:
-Mitokondria adalah organel sel yang dikenal sebagai "pembangkit tenaga" sel. Fungsi utamanya adalah menghasilkan adenosin trifosfat (ATP). Fotosintesis adalah proses yang digunakan oleh tumbuhan untuk mengubah energi cahaya menjadi energi kimia, yang terjadi di dalam kloroplas.
-### Output JSON:
+**Aturan Sangat Penting (JANGAN DILANGGAR):**
+1. Output WAJIB berupa **JSON List** valid.
+2. Key (kunci) JSON harus persis **"term"** dan **"definition"**. 
+3. **JANGAN terjemahkan** kata "term" atau "definition" ke bahasa Indonesia. Tetap gunakan bahasa Inggris untuk key tersebut.
+4. Isi (value) dari "term" dan "definition" harus dalam **Bahasa Indonesia**.
+5. Buatlah antara 10 sampai 20 item.
+
+### Contoh Format Output yang BENAR:
 [
   {{
     "term": "Fotosintesis",
-    "definition": "Proses biokimia yang mengubah energi cahaya menjadi energi kimia (gula), yang terjadi di dalam kloroplas pada organisme seperti tumbuhan."
-  }}
-]
----
-## Contoh 2
-### Topik: Struktur DNA
-### Konteks:
-Asam deoksiribonukleat, atau DNA, adalah molekul yang membawa instruksi genetik. RNA juga merupakan molekul penting. DNA terdiri dari dua untai yang melingkar membentuk heliks ganda.
-### Output JSON:
-[
+    "definition": "Proses tumbuhan mengubah cahaya menjadi energi kimia."
+  }},
   {{
-    "term": "Struktur DNA",
-    "definition": "Molekul berbentuk heliks ganda yang terdiri dari dua untai polinukleotida dan membawa instruksi genetik."
+    "term": "Mitokondria",
+    "definition": "Organel sel yang berfungsi sebagai tempat respirasi sel."
   }}
 ]
----
-## Tugas Anda
-### Topik: {topic}
-### Konteks:
+
+### Tugas Anda
+Topik: {topic}
+Konteks:
 {context}
 
-Jika konteks di atas kosong atau tidak relevan, jangan menebak atau menggunakan pengetahuan umum. 
-Kembalikan output berikut:
+Jika konteks di atas kosong atau tidak relevan, jangan menebak. Kembalikan output berikut:
 []
 
 ### Output JSON:
@@ -73,33 +63,57 @@ def format_docs(docs):
 
 @traceable(run_type="chain", name="RAG_Flashcard_Chain_With_Topic")
 def generate_flashcard_data(topic: str):
+    # 1. Access VectorStore
     retriever = get_vector_db_retriever()
+    vectorstore = retriever.vectorstore 
+    
+    # 2. Retrieve (Fast k=8)
+    try:
+        results_with_scores = vectorstore.similarity_search_with_score(topic, k=10)
+    except Exception as e:
+        print(f"Error retrieving documents: {e}")
+        return None
+
+    # FIX 3: Distance Threshold Logic
+    MAX_DISTANCE_THRESHOLD = 25.0 
+    
+    relevant_docs = []
+    print(f"\n--- 🔍 Filtering Context for '{topic}' ---")
+    for doc, distance_score in results_with_scores:
+        if distance_score <= MAX_DISTANCE_THRESHOLD:
+            # FIX 4: Safety Truncate (Prevents massive tokens)
+            # We truncate the content for the LLM, but we keep the object alive
+            if len(doc.page_content) > 1500:
+                doc.page_content = doc.page_content[:1500] + "...(truncated)"
+            
+            relevant_docs.append(doc)
+            print(f"✅ ACCEPTED (Dist: {distance_score:.2f})")
+        else:
+            print(f"❌ REJECTED (Dist: {distance_score:.2f})")
+
+    # 5. Handle Empty Results
+    if not relevant_docs:
+        print("⚠️ All documents were rejected by the threshold.")
+        return None
+
+    # 6. Generate Flashcards
+    formatted_context = format_docs(relevant_docs)
+    
     parser = JsonOutputParser()
     prompt = ChatPromptTemplate.from_template(template=FLASHCARD_PROMPT)
     generation_chain = prompt | llm | parser
 
-    def safe_generate(inputs):
-        context_docs = inputs["context"]
-        formatted_context = format_docs(context_docs)
-        if not formatted_context.strip():
-            return []  # ⛔️ Prevent hallucination
-        return generation_chain.invoke({
-            "context": formatted_context,
-            "topic": inputs["topic"]
-        })
-
-    chain = (
-        RunnablePassthrough.assign(
-            context=lambda inputs: retriever.invoke(inputs["topic"])
-        )
-        .assign(
-            flashcards=RunnableLambda(safe_generate)
-        )
-    )
-
     try:
-        result = chain.invoke({"topic": topic})
-        return result
+        flashcards = generation_chain.invoke({
+            "context": formatted_context,
+            "topic": topic
+        })
+        
+        # FIX 5: CRITICAL - Ensure 'context' is returned so App can display it
+        return {
+            "flashcards": flashcards,
+            "context": relevant_docs 
+        }
     except Exception as e:
-        print(f"An error occurred in the chain: {e}")
+        print(f"Error in generation chain: {e}")
         return None

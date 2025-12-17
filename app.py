@@ -48,8 +48,8 @@ if st.button("Buat Flashcards", type="primary"):
             cols = st.columns(3)
             for i, card in enumerate(flashcards_data):
                 col = cols[i % 3]
-                term = card.get("term", "No term")
-                definition = card.get("definition", "No definition")
+                term = card.get("term") or card.get("Term") or card.get("istilah") or "No term"
+                definition = card.get("definition") or card.get("Definition") or card.get("definisi") or "No definition"
                 current_color = card_colors[i % len(card_colors)]
                 component_html = f"""
                 <style>

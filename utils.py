@@ -9,13 +9,11 @@ VECTORSTORE_PATH = "./faiss_index"
 
 def get_vector_db_retriever():
     """
-    Loads the persistent FAISS vector store from the local file system
-    and returns it as a retriever.
+    Loads the persistent FAISS vector store.
     """
     if not os.path.exists(VECTORSTORE_PATH):
         raise FileNotFoundError(
-            f"Vector store not found at '{VECTORSTORE_PATH}'. "
-            "Please run the `create_vectorstore.py` script first."
+            f"Vector store not found at '{VECTORSTORE_PATH}'."
         )
 
     embeddings = HuggingFaceEmbeddings(
@@ -29,7 +27,8 @@ def get_vector_db_retriever():
         allow_dangerous_deserialization=True
     )
 
+    # RESTORED: Simple retriever, k=8 (Good balance of speed and context)
     return db.as_retriever(
-        search_type="mmr",
-        search_kwargs={'score_threshold': 0.6, 'k': 8}
-        )
+        search_type="similarity", 
+        search_kwargs={'k': 10} 
+    )
