@@ -10,7 +10,7 @@ from utils import get_vector_db_retriever
 load_dotenv()
 
 # FIX 1: Use 1.5-flash for stability and free tier limits
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-flash-latest"
 
 try:
     llm = ChatGoogleGenerativeAI(
@@ -26,24 +26,26 @@ except Exception as e:
 
 # FIX 2: Strict Prompt with Double Braces {{ }} for JSON examples
 FLASHCARD_PROMPT = """
-Anda adalah asisten dosen biologi ahli. Tugas Anda adalah mengekstrak istilah penting dan definisinya dari konteks yang diberikan menjadi format JSON.
+Anda adalah asisten dosen biologi ahli. Tugas Anda adalah mengekstrak istilah penting (term) dan definisinya dari konteks yang diberikan ke dalam format JSON.
 
 **Aturan Sangat Penting (JANGAN DILANGGAR):**
 1. Output WAJIB berupa **JSON List** valid.
 2. Key (kunci) JSON harus persis **"term"** dan **"definition"**. 
 3. **JANGAN terjemahkan** kata "term" atau "definition" ke bahasa Indonesia. Tetap gunakan bahasa Inggris untuk key tersebut.
-4. Isi (value) dari "term" dan "definition" harus dalam **Bahasa Indonesia**.
-5. Buatlah antara 10 sampai 20 item.
+4. **Kualitas Definisi:** Definisi harus bersifat deskriptif, teknis secara biologis, dan langsung merujuk pada fungsi atau karakteristik utama
+5. Isi (value) dari "term" dan "definition" harus dalam **Bahasa Indonesia**. 
+6. Mulai setiap definisi dengan menyebutkan kembali istilahnya secara langsung (contoh: "[Nama Istilah] adalah..."). JANGAN menggunakan frasa "Istilah ini adalah".
+7. Buatlah antara 10 sampai 20 item.
 
 ### Contoh Format Output yang BENAR:
 [
   {{
     "term": "Fotosintesis",
-    "definition": "Proses tumbuhan mengubah cahaya menjadi energi kimia."
+    "definition": "Fotosintesis adalah proses tumbuhan mengubah cahaya menjadi energi kimia."
   }},
   {{
     "term": "Mitokondria",
-    "definition": "Organel sel yang berfungsi sebagai tempat respirasi sel."
+    "definition": "Mitokondria adalah organel sel yang berfungsi sebagai tempat respirasi sel."
   }}
 ]
 

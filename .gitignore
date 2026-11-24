@@ -1,10 +1,12 @@
-.gitignore
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 # faiss_index/
+
+# Datasets & Evaluation Cache
+*.csv
+.deepeval/
 
 # C extensions
 *.so

@@ -1,5 +1,6 @@
 import streamlit as st
 import asyncio
+import concurrent.futures
 try:
     loop = asyncio.get_running_loop()
 except RuntimeError:
@@ -13,15 +14,36 @@ from flashcard_rag import generate_flashcard_data
 # --- PDF Generation Libraries ---
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+# ADDED KeepTogether and Spacer here:
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, KeepTogether, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="RAG Flashcards Generator", layout="wide")
 st.title("Biology Flashcards Generator - RAG")
-st.write("Masukkan keyword Biologi dan AI akan membuatkan flashcards dari keyword yang dimasukkan berdasarkan dokumen yang relevan")
-
+st.write("Masukkan keyword Biologi sesuai dengan KBBI dan AI akan membuatkan flashcards dari keyword yang dimasukkan berdasarkan dokumen yang relevan")
+with st.expander("📖 Panduan Penggunaan Keyword (Standar KBBI)"):
+    st.info("Agar pencarian dokumen lebih akurat, gunakan istilah Biologi yang baku sesuai **Kamus Besar Bahasa Indonesia (KBBI)**.")
+    
+    # Render the example table using Markdown
+    st.markdown("""
+| ✅ Istilah Baku (KBBI) |
+| :--- |
+| **Fotosintesis** |
+| **Rantai makanan** |
+| **Jaringan** |
+| **Reproduksi** |
+| **Mutasi** |
+| **Pencernaan** |
+| **Sel** |
+| **Metabolisme** |
+| **Ekosistem** |
+| **Kromosom** |
+| **Enzim** |
+| **Habitat** |
+""")
+    
 # Exact colors from your UI
 CARD_COLORS = [
     "#74c0fc",  # Bright Blue
@@ -34,7 +56,6 @@ CARD_COLORS = [
 ]
 
 # --- Initialize Session State ---
-# This "Memory" keeps the data alive when buttons are clicked
 if "flashcards" not in st.session_state:
     st.session_state.flashcards = None
 if "source_docs" not in st.session_state:
@@ -46,8 +67,8 @@ if "duration" not in st.session_state:
 
 def create_pdf(flashcards_data, topic):
     """
-    Generates a PDF with consistent rectangular boxes.
-    Left side = Colored (Term). Right side = White (Definition).
+    Generates a PDF where each card is built as its own table and wrapped 
+    in KeepTogether so the header and content never split across pages.
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -55,54 +76,50 @@ def create_pdf(flashcards_data, topic):
     elements = []
     styles = getSampleStyleSheet()
     
-    # --- Styles ---
     title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=20, spaceAfter=10)
     subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10, textColor=colors.grey, spaceAfter=20)
     term_style = ParagraphStyle('TermStyle', parent=styles['Normal'], alignment=TA_CENTER, fontSize=14, leading=18, fontName='Helvetica-Bold', textColor=colors.black)
     def_style = ParagraphStyle('DefStyle', parent=styles['Normal'], alignment=TA_LEFT, fontSize=11, leading=15, textColor=colors.black)
     header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], alignment=TA_CENTER, fontSize=12, fontName='Helvetica-Bold')
 
-    # --- Header Content ---
     elements.append(Paragraph(f"Flashcards: {topic}", title_style))
-    elements.append(Paragraph("(Print, Cut horizontally, then Fold in the middle)", subtitle_style))
+    elements.append(Paragraph("(Print, Cut horizontally along the borders, then Fold in the middle)", subtitle_style))
 
-    # --- Table Data Preparation ---
-    data = [[Paragraph("TERM (Front)", header_style), Paragraph("DEFINITION (Back)", header_style)]]
-    
-    row_colors = []
-    for i, card in enumerate(flashcards_data):
-        term = card.get("term") or "No term"
-        definition = card.get("definition") or "No definition"
-        data.append([Paragraph(term, term_style), Paragraph(definition, def_style)])
-        row_colors.append(CARD_COLORS[i % len(CARD_COLORS)])
-
-    # --- Table Dimensions ---
     usable_width = A4[0] - 60
     col_width = usable_width / 2
-    
-    # === CONSISTENT HEIGHT LOGIC ===
     FIXED_CARD_HEIGHT = 150 
-    row_heights = [30] + [FIXED_CARD_HEIGHT] * len(flashcards_data)
-
-    t = Table(data, colWidths=[col_width, col_width], rowHeights=row_heights)
     
-    # --- Table Styling ---
-    style_cmds = [
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),   
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),        
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),          
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey) # Header
-    ]
+    for i, card in enumerate(flashcards_data):
+        term = card.get("term") or "No term"
+        numbered_term = f"{i + 1}. {term}"
+        definition = card.get("definition") or "No definition"
+        
+        # Build a 2-row table specific to this single flashcard
+        card_data = [
+            [Paragraph("ISTILAH", header_style), Paragraph("DEFINISI", header_style)],
+            [Paragraph(numbered_term, term_style), Paragraph(definition, def_style)]
+        ]
+        
+        t = Table(card_data, colWidths=[col_width, col_width], rowHeights=[30, FIXED_CARD_HEIGHT])
+        
+        bg_color = colors.HexColor(CARD_COLORS[i % len(CARD_COLORS)])
+        
+        t.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),   
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),        
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),          
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey), # Apply grey to Row 0
+            ('BACKGROUND', (0, 1), (0, 1), bg_color),          # Apply color to Row 1, Col 0
+        ]))
+        
+        # KeepTogether prevents the 2 rows from being separated by a page break!
+        elements.append(KeepTogether(t))
+        
+        # Add a tiny gap between the cards to make cutting easier
+        elements.append(Spacer(1, 10))
 
-    for i, hex_color in enumerate(row_colors):
-        row_idx = i + 1
-        bg_color = colors.HexColor(hex_color)
-        style_cmds.append(('BACKGROUND', (0, row_idx), (0, row_idx), bg_color))
-
-    t.setStyle(TableStyle(style_cmds))
-    elements.append(t)
     doc.build(elements)
     buffer.seek(0)
     return buffer
@@ -110,13 +127,35 @@ def create_pdf(flashcards_data, topic):
 # --- User Input ---
 user_topic = st.text_input("Masukkan Keyword:", placeholder="contoh: DNA")
 
-# When "Buat" is clicked, we ONLY update the Session State
 if st.button("Buat Flashcards", type="primary"):
     if user_topic:
-        with st.spinner("Menganalisis dokumen dan membuat flashcard..."):
-            start_time = time.time()
-            result = generate_flashcard_data(user_topic)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        ESTIMATED_TIME = 15.0 
+        start_time = time.time()
+        
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(generate_flashcard_data, user_topic)
+            
+            while not future.done():
+                elapsed = time.time() - start_time
+                progress_pct = min(int((elapsed / ESTIMATED_TIME) * 100), 95)
+                
+                progress_bar.progress(progress_pct)
+                status_text.markdown(f"**Memproses dokumen & AI...** (Estimasi: ~{int(ESTIMATED_TIME)} detik | Waktu berlalu: {elapsed:.1f}s)")
+                
+                time.sleep(0.1) 
+            
+            result = future.result()
             end_time = time.time()
+            
+            progress_bar.progress(100)
+            status_text.success(f"Selesai dalam {end_time - start_time:.1f} detik!")
+            time.sleep(0.5) 
+            
+            progress_bar.empty()
+            status_text.empty()
             
             # SAVE TO SESSION STATE
             if result:
@@ -124,12 +163,13 @@ if st.button("Buat Flashcards", type="primary"):
                 st.session_state.source_docs = result.get("context")
                 st.session_state.topic = user_topic
                 st.session_state.duration = end_time - start_time
+                st.rerun() 
             else:
                 st.error("Gagal membuat flashcards (tidak ada hasil).")
     else:
         st.warning("Please enter a topic first.")
 
-# --- Display Logic (Runs if data exists in memory) ---
+# --- Display Logic ---
 if st.session_state.flashcards:
     flashcards_data = st.session_state.flashcards
     source_documents = st.session_state.source_docs
@@ -137,7 +177,7 @@ if st.session_state.flashcards:
     duration = st.session_state.duration
 
     st.success(f"Berhasil membuat {len(flashcards_data)} flashcards mengenai topik '{topic}'.")
-    st.write(f"Durasi: {duration:.2f} detik")
+    st.caption(f"⏱️ Waktu pemrosesan: {duration:.2f} detik")
 
     # --- 1. Generate PDF Button ---
     pdf_file = create_pdf(flashcards_data, topic)
@@ -154,6 +194,7 @@ if st.session_state.flashcards:
     for i, card in enumerate(flashcards_data):
         col = cols[i % 3]
         term = card.get("term") or "No term"
+        numbered_term = f"{i + 1}. {term}"
         definition = card.get("definition") or "No definition"
         current_color = CARD_COLORS[i % len(CARD_COLORS)]
         
@@ -163,25 +204,34 @@ if st.session_state.flashcards:
             .card-container-{i} {{ perspective: 1000px; }}
             .card-{i} {{ position: relative; width: 100%; height: 200px; transition: transform 0.8s; transform-style: preserve-3d; cursor: pointer; border: 1px solid #e6e6e6; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }}
             .is-flipped-{i} {{ transform: rotateY(180deg); }}
-            .card-face-{i} {{ position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; border-radius: 12px; text-align: center; font-family: 'Poppins', sans-serif; font-size: 1.1rem; }}
-            .card-front-{i} {{ background-color: {current_color}; color: #212529; font-weight: 600; }}
-            .card-back-{i} {{ background-color: #f0f2f6; color: #212529; transform: rotateY(180deg); font-weight: 400; }}
+            .card-face-{i} {{ position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; display: flex; justify-content: center; align-items: center; box-sizing: border-box; border-radius: 12px; text-align: center; font-family: 'Poppins', sans-serif; font-size: 0.95rem; }}
+            .card-front-{i} {{ background-color: {current_color}; color: #212529; font-weight: 600; padding: 15px; }}
+            .card-back-{i} {{ background-color: #f0f2f6; color: #212529; transform: rotateY(180deg); font-weight: 400; padding: 25px; overflow-y: auto; }}
         </style>
-        <div class="card-container-{i}"><div class="card-{i}" onclick="this.classList.toggle('is-flipped-{i}')"><div class="card-face-{i} card-front-{i}"><p>{term}</p></div><div class="card-face-{i} card-back-{i}"><p>{definition}</p></div></div></div>
+        <div class="card-container-{i}">
+            <div class="card-{i}" onclick="this.classList.toggle('is-flipped-{i}')">
+                <div class="card-face-{i} card-front-{i}">
+                    <p>{numbered_term}</p>
+                </div>
+                <div class="card-face-{i} card-back-{i}">
+                    <p>{definition}</p>
+                </div>
+            </div>
+        </div>
         """
         with col:
             st.components.v1.html(component_html, height=220)
     
-    # --- 3. Source Docs (Updated Section) ---
+    # --- 3. Bibliography (Trimmed clean format) ---
     st.markdown("---")
-    st.subheader("Sumber yang digunakan untuk membuat flashcard tersebut:")
+    st.subheader("Bibliography / Sumber Referensi:")
         
     if source_documents:
+        unique_sources = set()
         for doc in source_documents:
-            # Safely get filename, default to "Unknown" if missing
             source_file = os.path.basename(doc.metadata.get("source", "Unknown File"))
-            # Safely get page number, default to 0 if missing (display as 1)
-            page_number = doc.metadata.get("page", -1) + 1 
-                
-            with st.expander(f"**Source:** {source_file}, **Page:** {page_number}"):
-                st.write(doc.page_content)
+            clean_name = os.path.splitext(source_file)[0].replace("_", " ").replace("-", " ").strip().title()
+            unique_sources.add(clean_name)
+            
+        for source in sorted(list(unique_sources)):
+            st.write(f"- {source}")
